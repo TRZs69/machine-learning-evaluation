@@ -5,13 +5,13 @@ Tujuan dari evaluasi ini adalah mengukur seberapa relevan balasan chatbot terhad
 
 ## Persyaratan
 - Python 3.9+
-- File Database SQLite dari backend Levelearn (`your_database_file.db`)
+- Database MySQL Levelearn (Aiven)
 - Akses ke Supabase untuk mengambil log percakapan.
 
 ## Setup
 1. Buat virtual environment (opsional) dan install dependencies:
    ```bash
-   pip install pandas python-dotenv supabase google-generativeai matplotlib seaborn scikit-learn openpyxl
+   pip install pandas python-dotenv supabase google-generativeai matplotlib seaborn scikit-learn openpyxl pymysql
    ```
 2. Salin `.env.example` menjadi `.env` dan isi token untuk Supabase dan Gemini API:
    ```
@@ -19,7 +19,7 @@ Tujuan dari evaluasi ini adalah mengukur seberapa relevan balasan chatbot terhad
    SUPABASE_SERVICE_ROLE_KEY="your-supabase-service-role-key"
    LEVELY_GEMINI_API_KEY="your-gemini-api-key"
    ```
-3. Letakkan file database backend (`your_database_file.db`) di path yang sesuai dengan script, atau pastikan struktur foldernya sejajar seperti saat script di-*generate*.
+3. Pastikan `DATABASE_URL` di `.env` sudah benar dan mengarah ke database MySQL (Aiven) milik Levelearn.
 
 ## Cara Menjalankan Evaluasi
 1. Buka `chatbot_ml_evaluation.ipynb` via VSCode atau Jupyter Notebook.
