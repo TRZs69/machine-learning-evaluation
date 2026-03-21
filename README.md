@@ -7,22 +7,24 @@ Tujuan dari evaluasi ini adalah mengukur seberapa relevan balasan chatbot terhad
 - Python 3.9+
 - Database MySQL Levelearn (Aiven)
 - Akses ke Supabase untuk mengambil log percakapan.
-- Backend LeveLearn aktif (backend akan memanggil OpenRouter API sebagai proxy).
+- OpenRouter API key untuk evaluasi LLM-as-a-judge.
 
 ## Setup
 1. Buat virtual environment (opsional) dan install dependencies:
    ```bash
    pip install pandas python-dotenv supabase requests matplotlib seaborn scikit-learn openpyxl pymysql
    ```
-2. Salin `.env.example` menjadi `.env` dan isi token untuk Supabase serta URL backend proxy LLM:
+2. Salin `.env.example` menjadi `.env` dan isi token Supabase serta kredensial OpenRouter:
    ```
    SUPABASE_URL="your-supabase-url"
    SUPABASE_SERVICE_ROLE_KEY="your-supabase-service-role-key"
-   BACKEND_LLM_API_BASE="https://backend-65ah.vercel.app/api/llm/openrouter"
+   OPENROUTER_API_KEY="your-openrouter-api-key"
+   OPENROUTER_REFERER="http://localhost"
+   OPENROUTER_APP_NAME="LeveLearn"
    DATABASE_URL="mysql://username:password@host:3306/database_name"
    ```
 3. Pastikan `DATABASE_URL` di `.env` sudah benar dan mengarah ke database MySQL (Aiven) milik Levelearn.
-4. Pastikan backend memiliki env OpenRouter (`OPENROUTER_API_KEY`, `OPENROUTER_REFERER`, `OPENROUTER_APP_NAME`) karena notebook tidak memanggil OpenRouter secara langsung.
+4. Pastikan kredensial OpenRouter tersedia di environment notebook (`OPENROUTER_API_KEY`, `OPENROUTER_REFERER`, `OPENROUTER_APP_NAME`) karena notebook memanggil OpenRouter secara langsung.
 
 ## Cara Menjalankan Evaluasi
 1. Buka `chatbot_ml_evaluation.ipynb` via VSCode atau Jupyter Notebook.
