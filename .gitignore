@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 human_evaluation_sample.xlsx
+.DS_Store/
