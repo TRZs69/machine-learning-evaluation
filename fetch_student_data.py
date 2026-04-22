@@ -2,14 +2,32 @@ import os
 import pandas as pd
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
+import urllib.parse as urlparse
 
 load_dotenv()
 
-DATABASE_URL = os.getenv('DATABASE_URL')
-if DATABASE_URL and "ssl-mode" in DATABASE_URL:
-    DATABASE_URL = DATABASE_URL.replace("ssl-mode", "ssl_mode")
+def get_engine():
+    DATABASE_URL = os.getenv('DATABASE_URL')
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL not found in environment variables.")
 
-engine = create_engine(DATABASE_URL)
+    url_parts = urlparse.urlparse(DATABASE_URL)
+    
+    query_params = urlparse.parse_qs(url_parts.query)
+    
+    problematic_params = ['connection_limit', 'ssl-mode', 'pool_timeoute']
+    
+    filtered_params = {k: v for k, v in query_params.items() if k not in problematic_params}
+    
+    base_url = f"{url_parts.scheme}://{url_parts.username}:{url_parts.password}@{url_parts.hostname}:{url_parts.port}{url_parts.path}"
+    
+    connect_args = {}
+    if 'ssl-mode' in query_params or 'ssl_mode' in query_params or 'ssl' in url_parts.query:
+        connect_args["ssl"] = {"ca": None} 
+
+    return create_engine(base_url, connect_args=connect_args)
+
+engine = get_engine()
 
 def get_student_context(user_id):
     """
@@ -58,5 +76,5 @@ def get_student_context(user_id):
         return context
 
     except Exception as e:
-        print(f"Error fetching from MySQL: {e}")
+        print(f"Error fetching from MySQL for user {user_id}: {e}")
         return None

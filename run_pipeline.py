@@ -19,7 +19,6 @@ if not all([SUPABASE_URL, SUPABASE_KEY, OPENROUTER_API_KEY]):
 
 API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 EVAL_MODEL = 'meta-llama/llama-3.3-70b-instruct'
-BATCH_SIZE = 50 
 
 HEADERS = {
     'Authorization': f'Bearer {OPENROUTER_API_KEY}',
