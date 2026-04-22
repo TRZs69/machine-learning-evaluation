@@ -5,3 +5,4 @@ __pycache__/
 .ipynb_checkpoints/
 human_evaluation_sample.xlsx
 .DS_Store/
+venv/
