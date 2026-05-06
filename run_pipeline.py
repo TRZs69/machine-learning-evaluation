@@ -44,7 +44,6 @@ df_ratings = fetch_all_rows('chatbot_ratings')
 pairs = []
 print("Enriching samples with student context...")
 for _, row in df_ratings.iterrows():
-    # Fetch student context from MySQL
     student_ctx = get_student_context(row['user_id'])
     
     pairs.append({

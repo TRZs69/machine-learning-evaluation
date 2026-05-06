@@ -15,10 +15,6 @@ def get_engine():
     
     query_params = urlparse.parse_qs(url_parts.query)
     
-    problematic_params = ['connection_limit', 'ssl-mode', 'pool_timeoute']
-    
-    filtered_params = {k: v for k, v in query_params.items() if k not in problematic_params}
-    
     base_url = f"{url_parts.scheme}://{url_parts.username}:{url_parts.password}@{url_parts.hostname}:{url_parts.port}{url_parts.path}"
     
     connect_args = {}
