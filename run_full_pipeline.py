@@ -38,26 +38,6 @@ def fetch_all_rows(table_name):
         start += 1000
     return pd.DataFrame(rows)
 
-print("Fetching 75 samples from chatbot_ratings...")
-df_ratings = fetch_all_rows('chatbot_ratings')
-
-pairs = []
-print("Enriching samples with student context...")
-for _, row in df_ratings.iterrows():
-    student_ctx = get_student_context(row['user_id'])
-    
-    pairs.append({
-        'eval_id': row['id'],
-        'user_id': row['user_id'],
-        'user_message': row['user_request'],
-        'chatbot_reply': row['bot_response'],
-        'human_score': row['rating'],
-        'student_level': student_ctx.get('current_difficulty') if student_ctx else 'N/A',
-        'student_elo': student_ctx.get('global_elo') if student_ctx else 'N/A'
-    })
-
-df_pairs = pd.DataFrame(pairs)
-
 def build_judge_prompt(row):
     return f"""
     {INSTRUCTION}
@@ -96,20 +76,45 @@ def get_llm_score(row):
     except Exception as e:
         return None, str(e)
 
-df_pairs['llm_score'] = None
-df_pairs['llm_reason'] = None
+def run_pipeline():
+    print("Fetching ALL rows from chatbot_ratings...")
+    df_ratings = fetch_all_rows('chatbot_ratings')
+    print(f"Total rows fetched: {len(df_ratings)}")
 
-print(f"Starting evaluation for {len(df_pairs)} samples...")
+    pairs = []
+    print("Enriching samples with student context...")
+    for _, row in df_ratings.iterrows():
+        student_ctx = get_student_context(row['user_id'])
+        
+        pairs.append({
+            'eval_id': row['id'],
+            'user_id': row['user_id'],
+            'user_message': row['user_request'],
+            'chatbot_reply': row['bot_response'],
+            'human_score': row['rating'],
+            'student_level': student_ctx.get('current_difficulty') if student_ctx else 'N/A',
+            'student_elo': student_ctx.get('global_elo') if student_ctx else 'N/A'
+        })
 
-with ThreadPoolExecutor(max_workers=10) as executor:
-    futures = {executor.submit(get_llm_score, row): i for i, row in df_pairs.iterrows()}
-    for future in as_completed(futures):
-        idx = futures[future]
-        score, reason = future.result()
-        df_pairs.at[idx, 'llm_score'] = score
-        df_pairs.at[idx, 'llm_reason'] = reason
-        print(f"Progress: {idx+1}/{len(df_pairs)} evaluated")
+    df_pairs = pd.DataFrame(pairs)
+    df_pairs['llm_score'] = None
+    df_pairs['llm_reason'] = None
 
-df_final = df_pairs.drop(columns=['student_level'])
-df_final.to_csv('evaluation_results.csv', index=False)
-print("Done. Results saved to evaluation_results.csv")
+    print(f"Starting FULL evaluation for {len(df_pairs)} rows...")
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(get_llm_score, row): i for i, row in df_pairs.iterrows()}
+        for future in as_completed(futures):
+            idx = futures[future]
+            score, reason = future.result()
+            df_pairs.at[idx, 'llm_score'] = score
+            df_pairs.at[idx, 'llm_reason'] = reason
+            if (idx + 1) % 10 == 0 or (idx + 1) == len(df_pairs):
+                print(f"Progress: {idx+1}/{len(df_pairs)} evaluated")
+
+    df_final = df_pairs.drop(columns=['student_level'])
+    df_final.to_csv('evaluation_results_full.csv', index=False)
+    print("Done. Results saved to evaluation_results_full.csv")
+
+if __name__ == "__main__":
+    run_pipeline()
