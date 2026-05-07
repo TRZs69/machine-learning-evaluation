@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from supabase import create_client
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
@@ -27,16 +27,56 @@ HEADERS = {
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def fetch_all_rows(table_name):
-    rows = []
+def fetch_messages_and_sessions():
+    """Fetches chat messages and sessions from Supabase."""
+    print("Fetching chat_messages (<= April 9)...")
+    messages = []
     start = 0
     while True:
-        resp = supabase.table(table_name).select('*').range(start, start + 999).execute()
+        # Fetch messages up to April 9, 2026
+        resp = supabase.table('chat_messages').select('*').lte('created_at', '2026-04-09T23:59:59').order('created_at').range(start, start + 999).execute()
         batch = resp.data or []
-        rows.extend(batch)
+        messages.extend(batch)
         if len(batch) < 1000: break
         start += 1000
-    return pd.DataFrame(rows)
+    
+    print(f"Fetched {len(messages)} messages.")
+    
+    print("Fetching chat_sessions...")
+    sessions = []
+    start = 0
+    while True:
+        resp = supabase.table('chat_sessions').select('id, user_id').range(start, start + 999).execute()
+        batch = resp.data or []
+        sessions.extend(batch)
+        if len(batch) < 1000: break
+        start += 1000
+    
+    print(f"Fetched {len(sessions)} sessions.")
+    return pd.DataFrame(messages), pd.DataFrame(sessions)
+
+def pair_messages(df_messages, df_sessions):
+    """Pairs user messages with the subsequent assistant reply."""
+    session_to_user = dict(zip(df_sessions['id'], df_sessions['user_id']))
+    pairs = []
+    
+    # Sort messages by session and creation time to ensure correct pairing
+    df_messages = df_messages.sort_values(['session_id', 'created_at'])
+    
+    for session_id, group in df_messages.groupby('session_id'):
+        user_id = session_to_user.get(session_id)
+        msgs = group.to_dict('records')
+        for i in range(len(msgs) - 1):
+            # A pair is a user message followed by an assistant message
+            if msgs[i]['role'] == 'user' and msgs[i+1]['role'] == 'assistant':
+                pairs.append({
+                    'eval_id': msgs[i+1]['id'],
+                    'user_id': user_id,
+                    'user_message': msgs[i]['content'],
+                    'chatbot_reply': msgs[i+1]['content'],
+                    'human_score': None # Placeholder if no rating exists
+                })
+    return pd.DataFrame(pairs)
 
 def build_judge_prompt(row):
     return f"""
@@ -76,25 +116,75 @@ def get_llm_score(row):
     except Exception as e:
         return None, str(e)
 
+def fetch_ratings():
+    """Fetches existing ratings for exclusion."""
+    print("Fetching chatbot_ratings for exclusion...")
+    ratings = []
+    start = 0
+    while True:
+        resp = supabase.table('chatbot_ratings').select('user_id, user_request, bot_response').range(start, start + 999).execute()
+        batch = resp.data or []
+        ratings.extend(batch)
+        if len(batch) < 1000: break
+        start += 1000
+    print(f"Fetched {len(ratings)} existing ratings.")
+    return pd.DataFrame(ratings)
+
 def run_pipeline():
-    print("Fetching ALL rows from chatbot_ratings...")
-    df_ratings = fetch_all_rows('chatbot_ratings')
-    print(f"Total rows fetched: {len(df_ratings)}")
+    df_messages, df_sessions = fetch_messages_and_sessions()
+    
+    print("Pairing user-assistant messages...")
+    df_pairs_raw = pair_messages(df_messages, df_sessions)
+    print(f"Total pairs identified from logs: {len(df_pairs_raw)}")
+
+    # Fetch and filter out existing ratings
+    df_ratings = fetch_ratings()
+    
+    def normalize(text):
+        if not isinstance(text, str): return ""
+        return " ".join(text.strip().split())
+
+    rating_keys = set()
+    for _, r in df_ratings.iterrows():
+        key = (r['user_id'], normalize(r['user_request']), normalize(r['bot_response']))
+        rating_keys.add(key)
+
+    initial_count = len(df_pairs_raw)
+    filtered_pairs = []
+    for _, p in df_pairs_raw.iterrows():
+        key = (p['user_id'], normalize(p['user_message']), normalize(p['chatbot_reply']))
+        if key not in rating_keys:
+            filtered_pairs.append(p)
+        
+    df_pairs_raw = pd.DataFrame(filtered_pairs)
+    print(f"Filtered pairs: {len(df_pairs_raw)} (Excluded {initial_count - len(df_pairs_raw)} pairs already present in chatbot_ratings)")
 
     pairs = []
-    print("Enriching samples with student context...")
-    for _, row in df_ratings.iterrows():
-        student_ctx = get_student_context(row['user_id'])
+    print("Enriching samples with student context (this may take a while)...")
+    
+    # Cache student context to avoid redundant slow DB calls
+    student_cache = {}
+    total_pairs = len(df_pairs_raw)
+    
+    for i, row in df_pairs_raw.iterrows():
+        user_id = row['user_id']
+        if user_id not in student_cache:
+            student_cache[user_id] = get_student_context(user_id)
+        
+        student_ctx = student_cache[user_id]
         
         pairs.append({
-            'eval_id': row['id'],
-            'user_id': row['user_id'],
-            'user_message': row['user_request'],
-            'chatbot_reply': row['bot_response'],
-            'human_score': row['rating'],
+            'eval_id': row['eval_id'],
+            'user_id': user_id,
+            'user_message': row['user_message'],
+            'chatbot_reply': row['chatbot_reply'],
+            'human_score': row['human_score'],
             'student_level': student_ctx.get('current_difficulty') if student_ctx else 'N/A',
             'student_elo': student_ctx.get('global_elo') if student_ctx else 'N/A'
         })
+        
+        if (i + 1) % 10 == 0 or (i + 1) == total_pairs:
+            print(f"Enrichment progress: {i+1}/{total_pairs} pairs processed")
 
     df_pairs = pd.DataFrame(pairs)
     df_pairs['llm_score'] = None
